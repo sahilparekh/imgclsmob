@@ -11,7 +11,7 @@ __all__ = ['ResNet', 'resnet10', 'resnet12', 'resnet14', 'resnetbc14b', 'resnet1
 import os
 import tensorflow as tf
 import tensorflow.keras.layers as nn
-from .common import conv1x1_block, conv3x3_block, conv7x7_block, MaxPool2d, SimpleSequential, flatten, is_channels_first
+from .common import conv1x1_block, conv3x3_block, conv7x7_block, MaxPool2d, SimpleSequential, flatten, is_channels_first, add_get_config
 
 
 class ResBlock(nn.Layer):
@@ -33,6 +33,8 @@ class ResBlock(nn.Layer):
     data_format : str, default 'channels_last'
         The ordering of the dimensions in tensors.
     """
+
+    @add_get_config
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -88,6 +90,8 @@ class ResBottleneck(nn.Layer):
     data_format : str, default 'channels_last'
         The ordering of the dimensions in tensors.
     """
+
+    @add_get_config
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -156,6 +160,8 @@ class ResUnit(nn.Layer):
     data_format : str, default 'channels_last'
         The ordering of the dimensions in tensors.
     """
+
+    @add_get_config
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -226,6 +232,8 @@ class ResInitBlock(nn.Layer):
     data_format : str, default 'channels_last'
         The ordering of the dimensions in tensors.
     """
+
+    @add_get_config
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -273,7 +281,11 @@ class ResNet(tf.keras.Model):
         Number of classification classes.
     data_format : str, default 'channels_last'
         The ordering of the dimensions in tensors.
+    use_with_ak_classification : bool
+        Whether to use it with auto-keras image classification node
     """
+
+    @add_get_config
     def __init__(self,
                  channels,
                  init_block_channels,
@@ -283,11 +295,14 @@ class ResNet(tf.keras.Model):
                  in_size=(224, 224),
                  classes=1000,
                  data_format="channels_last",
+                 use_with_ak_classification=False,
                  **kwargs):
         super(ResNet, self).__init__(**kwargs)
         self.in_size = in_size
         self.classes = classes
         self.data_format = data_format
+        self.use_with_ak_classification = use_with_ak_classification
+        self.should_include_average_pooling = False if (in_size[0] == None or in_size[1] == None) else True
 
         self.features = SimpleSequential(name="features")
         self.features.add(ResInitBlock(
@@ -310,21 +325,28 @@ class ResNet(tf.keras.Model):
                     name="unit{}".format(j + 1)))
                 in_channels = out_channels
             self.features.add(stage)
-        self.features.add(nn.AveragePooling2D(
-            pool_size=7,
-            strides=1,
-            data_format=data_format,
-            name="final_pool"))
 
-        self.output1 = nn.Dense(
-            units=classes,
-            input_dim=in_channels,
-            name="output1")
+        if self.should_include_average_pooling:
+            self.features.add(nn.AveragePooling2D(
+                pool_size=7,
+                strides=1,
+                data_format=data_format,
+                name="final_pool"))
+
+        if not self.use_with_ak_classification:
+            self.output1 = nn.Dense(
+                units=classes,
+                input_dim=in_channels,
+                name="output1")
 
     def call(self, x, training=None):
         x = self.features(x, training=training)
-        x = flatten(x, self.data_format)
-        x = self.output1(x)
+
+        if self.should_include_average_pooling:
+            x = flatten(x, self.data_format)
+
+        if not self.use_with_ak_classification:
+            x = self.output1(x)
         return x
 
 
