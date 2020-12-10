@@ -328,7 +328,7 @@ class ResNet(tf.keras.Model):
 
         if self.should_include_average_pooling:
             self.features.add(nn.AveragePooling2D(
-                pool_size=7,
+                pool_size=2,
                 strides=1,
                 data_format=data_format,
                 name="final_pool"))
